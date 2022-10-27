@@ -21,6 +21,7 @@ error ERC721OffchainPermit__InvalidPermitSignature();
  */
 
 contract ERC721OffchainPermit is ERC721 {
+
     bytes32 private constant DOMAIN_TYPE_HASH =
         keccak256(
             "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
@@ -37,6 +38,15 @@ contract ERC721OffchainPermit is ERC721 {
 
     // tokenId to nonce
     mapping(uint256 => uint256) private _nonces;
+
+    // debugging events
+    event PermitApplied(address spender, uint256 tokenId);
+    event SafeTransferWithPermitExecuted(address from, address to, address sender);
+    event Recovery(address recoveredAddress, address spender, ECDSA.RecoverError error);
+    event DigestOutput(bytes32 _digest);
+    event DigestInput(address spender, uint256 tokenId, uint256 nonce, uint256 deadline);
+
+    event ECDSAEvent(string description, uint256 number);
 
     constructor() ERC721("TEST NFT WITH PERMIT", "TNFTP") {
         uint256 chainId;
@@ -72,6 +82,7 @@ contract ERC721OffchainPermit is ERC721 {
         // use the off-chain generated permit to get msg.sender approved
         permitToApprove(to, tokenId, deadline, signature);
         // use safeTransferFrom
+        emit SafeTransferWithPermitExecuted(from, to, msg.sender);
         safeTransferFrom(from, to, tokenId, _data);
     }
 
@@ -91,8 +102,12 @@ contract ERC721OffchainPermit is ERC721 {
         if (deadline < block.timestamp) {
             revert ERC721OffchainPermit__PermitDeadlineExpired();
         }
+        emit DigestInput(spender, tokenId, _nonces[tokenId], deadline);
         bytes32 digest = _buildDigest(spender, tokenId, _nonces[tokenId], deadline);
-        (address recoveredAddress, ) = ECDSA.tryRecover(digest, signature);
+        emit DigestOutput(digest);
+        (address recoveredAddress, ECDSA.RecoverError err) = ECDSA.tryRecover(digest, signature);
+
+        emit Recovery(recoveredAddress, spender, err);
         if (recoveredAddress == address(0) || spender == address(0)) {
             revert ERC721OffchainPermit__ZeroAddress();
         }
@@ -103,6 +118,7 @@ contract ERC721OffchainPermit is ERC721 {
             revert ERC721OffchainPermit__InvalidPermitSignature();
         }
         _approve(spender, tokenId);
+        emit PermitApplied(spender, tokenId);
     }
 
     /**

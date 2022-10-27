@@ -97,3 +97,6 @@ typechain
 
 # vsc
 /.vscode
+
+# echidna corpus
+/contracts/echidna/corpus
